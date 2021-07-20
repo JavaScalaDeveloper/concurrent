@@ -12,40 +12,40 @@ threadLocal是为了解决**对象不能被多线程共享访问**的问题，�
 
 # 2. 已经做出了哪些改进？ #
 实际上，为了解决threadLocal潜在的内存泄漏的问题，Josh Bloch and Doug Lea大师已经做了一些改进。在threadLocal的set和get方法中都有相应的处理。下文为了叙述，针对key为null的entry，源码注释为stale entry，直译为不新鲜的entry，这里我就称之为“脏entry”。比如在ThreadLocalMap的set方法中：
+```java
+private void set(ThreadLocal<?> key, Object value) {
 
-	private void set(ThreadLocal<?> key, Object value) {
-	
-	    // We don't use a fast path as with get() because it is at
-	    // least as common to use set() to create new entries as
-	    // it is to replace existing ones, in which case, a fast
-	    // path would fail more often than not.
-	
-	    Entry[] tab = table;
-	    int len = tab.length;
-	    int i = key.threadLocalHashCode & (len-1);
-	
-	    for (Entry e = tab[i];
-                 e != null;
-                 e = tab[i = nextIndex(i, len)]) {
-            ThreadLocal<?> k = e.get();
+	// We don't use a fast path as with get() because it is at
+	// least as common to use set() to create new entries as
+	// it is to replace existing ones, in which case, a fast
+	// path would fail more often than not.
 
-            if (k == key) {
-                e.value = value;
-                return;
-            }
+	Entry[] tab = table;
+	int len = tab.length;
+	int i = key.threadLocalHashCode & (len-1);
 
-            if (k == null) {
-                replaceStaleEntry(key, value, i);
-                return;
-            }
-         }
-	
-	    tab[i] = new Entry(key, value);
-	    int sz = ++size;
-	    if (!cleanSomeSlots(i, sz) && sz >= threshold)
-	        rehash();
-	}
+	for (Entry e = tab[i];
+			 e != null;
+			 e = tab[i = nextIndex(i, len)]) {
+		ThreadLocal<?> k = e.get();
 
+		if (k == key) {
+			e.value = value;
+			return;
+		}
+
+		if (k == null) {
+			replaceStaleEntry(key, value, i);
+			return;
+		}
+	 }
+
+	tab[i] = new Entry(key, value);
+	int sz = ++size;
+	if (!cleanSomeSlots(i, sz) && sz >= threshold)
+		rehash();
+}
+```
 在该方法中针对脏entry做了这样的处理：
 
 1. 如果当前table[i]！=null的话说明hash冲突就需要向后环形查找，若在查找过程中遇到脏entry就通过replaceStaleEntry进行处理；
@@ -54,38 +54,38 @@ threadLocal是为了解决**对象不能被多线程共享访问**的问题，�
 ## 2.1 cleanSomeSlots ##
 
 该方法的源码为：
-
-	/* @param i a position known NOT to hold a stale entry. The
-     * scan starts at the element after i.
-     *
-     * @param n scan control: {@code log2(n)} cells are scanned,
-     * unless a stale entry is found, in which case
-     * {@code log2(table.length)-1} additional cells are scanned.
-     * When called from insertions, this parameter is the number
-     * of elements, but when from replaceStaleEntry, it is the
-     * table length. (Note: all this could be changed to be either
-     * more or less aggressive by weighting n instead of just
-     * using straight log n. But this version is simple, fast, and
-     * seems to work well.)
-     *
-     * @return true if any stale entries have been removed.
-     */
-	private boolean cleanSomeSlots(int i, int n) {
-	    boolean removed = false;
-	    Entry[] tab = table;
-	    int len = tab.length;
-	    do {
-	        i = nextIndex(i, len);
-	        Entry e = tab[i];
-	        if (e != null && e.get() == null) {
-	            n = len;
-	            removed = true;
-	            i = expungeStaleEntry(i);
-	        }
-	    } while ( (n >>>= 1) != 0);
-	    return removed;
-	}
-
+```java
+/* @param i a position known NOT to hold a stale entry. The
+ * scan starts at the element after i.
+ *
+ * @param n scan control: {@code log2(n)} cells are scanned,
+ * unless a stale entry is found, in which case
+ * {@code log2(table.length)-1} additional cells are scanned.
+ * When called from insertions, this parameter is the number
+ * of elements, but when from replaceStaleEntry, it is the
+ * table length. (Note: all this could be changed to be either
+ * more or less aggressive by weighting n instead of just
+ * using straight log n. But this version is simple, fast, and
+ * seems to work well.)
+ *
+ * @return true if any stale entries have been removed.
+ */
+private boolean cleanSomeSlots(int i, int n) {
+	boolean removed = false;
+	Entry[] tab = table;
+	int len = tab.length;
+	do {
+		i = nextIndex(i, len);
+		Entry e = tab[i];
+		if (e != null && e.get() == null) {
+			n = len;
+			removed = true;
+			i = expungeStaleEntry(i);
+		}
+	} while ( (n >>>= 1) != 0);
+	return removed;
+}
+```
 
 
 **入参：**
@@ -111,58 +111,58 @@ threadLocal是为了解决**对象不能被多线程共享访问**的问题，�
 
 如果对输入参数能够理解的话，那么cleanSomeSlots方法搜索基本上清除了，但是全部搞定还需要掌握expungeStaleEntry方法，当在搜索过程中遇到了脏entry的话就会调用该方法去清理掉脏entry。源码为：
 
+```java
+/**
+ * Expunge a stale entry by rehashing any possibly colliding entries
+ * lying between staleSlot and the next null slot.  This also expunges
+ * any other stale entries encountered before the trailing null.  See
+ * Knuth, Section 6.4
+ *
+ * @param staleSlot index of slot known to have null key
+ * @return the index of the next null slot after staleSlot
+ * (all between staleSlot and this slot will have been checked
+ * for expunging).
+ */
+private int expungeStaleEntry(int staleSlot) {
+	Entry[] tab = table;
+	int len = tab.length;
 
-	/**
-	 * Expunge a stale entry by rehashing any possibly colliding entries
-	 * lying between staleSlot and the next null slot.  This also expunges
-	 * any other stale entries encountered before the trailing null.  See
-	 * Knuth, Section 6.4
-	 *
-	 * @param staleSlot index of slot known to have null key
-	 * @return the index of the next null slot after staleSlot
-	 * (all between staleSlot and this slot will have been checked
-	 * for expunging).
-	 */
-	private int expungeStaleEntry(int staleSlot) {
-	    Entry[] tab = table;
-	    int len = tab.length;
-	
-		//清除当前脏entry
-	    // expunge entry at staleSlot
-	    tab[staleSlot].value = null;
-	    tab[staleSlot] = null;
-	    size--;
-	
-	    // Rehash until we encounter null
-	    Entry e;
-	    int i;
-		//2.往后环形继续查找,直到遇到table[i]==null时结束
-	    for (i = nextIndex(staleSlot, len);
-	         (e = tab[i]) != null;
-	         i = nextIndex(i, len)) {
-	        ThreadLocal<?> k = e.get();
-			//3. 如果在向后搜索过程中再次遇到脏entry，同样将其清理掉
-	        if (k == null) {
-	            e.value = null;
-	            tab[i] = null;
-	            size--;
-	        } else {
-				//处理rehash的情况
-	            int h = k.threadLocalHashCode & (len - 1);
-	            if (h != i) {
-	                tab[i] = null;
-	
-	                // Unlike Knuth 6.4 Algorithm R, we must scan until
-	                // null because multiple entries could have been stale.
-	                while (tab[h] != null)
-	                    h = nextIndex(h, len);
-	                tab[h] = e;
-	            }
-	        }
-	    }
-	    return i;
+	//清除当前脏entry
+	// expunge entry at staleSlot
+	tab[staleSlot].value = null;
+	tab[staleSlot] = null;
+	size--;
+
+	// Rehash until we encounter null
+	Entry e;
+	int i;
+	//2.往后环形继续查找,直到遇到table[i]==null时结束
+	for (i = nextIndex(staleSlot, len);
+		 (e = tab[i]) != null;
+		 i = nextIndex(i, len)) {
+		ThreadLocal<?> k = e.get();
+		//3. 如果在向后搜索过程中再次遇到脏entry，同样将其清理掉
+		if (k == null) {
+			e.value = null;
+			tab[i] = null;
+			size--;
+		} else {
+			//处理rehash的情况
+			int h = k.threadLocalHashCode & (len - 1);
+			if (h != i) {
+				tab[i] = null;
+
+				// Unlike Knuth 6.4 Algorithm R, we must scan until
+				// null because multiple entries could have been stale.
+				while (tab[h] != null)
+					h = nextIndex(h, len);
+				tab[h] = e;
+			}
+		}
 	}
-
+	return i;
+}
+```
 该方法逻辑请看注释（第1,2,3步），主要做了这么几件事情：
 1. 清理当前脏entry，即将其value引用置为null，并且将table[staleSlot]也置为null。value置为null后该value域变为不可达，在下一次gc的时候就会被回收掉，同时table[staleSlot]为null后以便于存放新的entry;
 2. 从当前staleSlot位置向后环形（nextIndex）继续搜索，直到遇到哈希桶（tab[i]）为null的时候退出；
@@ -198,90 +198,89 @@ threadLocal是为了解决**对象不能被多线程共享访问**的问题，�
 
 
 先来看replaceStaleEntry 方法，该方法源码为：
+```java
+/*
+ * @param  key the key
+ * @param  value the value to be associated with key
+ * @param  staleSlot index of the first stale entry encountered while
+ *         searching for key.
+ */
+private void replaceStaleEntry(ThreadLocal<?> key, Object value,int staleSlot) {
+Entry[] tab = table;
+int len = tab.length;
+Entry e;
 
-	/*
-	 * @param  key the key
-	 * @param  value the value to be associated with key
-	 * @param  staleSlot index of the first stale entry encountered while
-	 *         searching for key.
-	 */
-	private void replaceStaleEntry(ThreadLocal<?> key, Object value,
-	                               int staleSlot) {
-	    Entry[] tab = table;
-	    int len = tab.length;
-	    Entry e;
-	
-	    // Back up to check for prior stale entry in current run.
-	    // We clean out whole runs at a time to avoid continual
-	    // incremental rehashing due to garbage collector freeing
-	    // up refs in bunches (i.e., whenever the collector runs).
-	
-		//向前找到第一个脏entry
-	    int slotToExpunge = staleSlot;
-	    for (int i = prevIndex(staleSlot, len);
-	         (e = tab[i]) != null;
-	         i = prevIndex(i, len))
-	        if (e.get() == null)
-	1.          slotToExpunge = i;
-	
-	    // Find either the key or trailing null slot of run, whichever
-	    // occurs first
-	    for (int i = nextIndex(staleSlot, len);
-	         (e = tab[i]) != null;
-	         i = nextIndex(i, len)) {
-	        ThreadLocal<?> k = e.get();
-	
-	        // If we find key, then we need to swap it
-	        // with the stale entry to maintain hash table order.
-	        // The newly stale slot, or any other stale slot
-	        // encountered above it, can then be sent to expungeStaleEntry
-	        // to remove or rehash all of the other entries in run.
-	        if (k == key) {
-				
-				//如果在向后环形查找过程中发现key相同的entry就覆盖并且和脏entry进行交换
-	2.            e.value = value;
-	3.            tab[i] = tab[staleSlot];
-	4.            tab[staleSlot] = e;
-	
-	            // Start expunge at preceding stale entry if it exists
-				//如果在查找过程中还未发现脏entry，那么就以当前位置作为cleanSomeSlots
-				//的起点
-	            if (slotToExpunge == staleSlot)
-	5.                slotToExpunge = i;
-				//搜索脏entry并进行清理
-	6.            cleanSomeSlots(expungeStaleEntry(slotToExpunge), len);
-	            return;
-	        }
-	
-	        // If we didn't find stale entry on backward scan, the
-	        // first stale entry seen while scanning for key is the
-	        // first still present in the run.
-			//如果向前未搜索到脏entry，则在查找过程遇到脏entry的话，后面就以此时这个位置
-			//作为起点执行cleanSomeSlots
-	        if (k == null && slotToExpunge == staleSlot)
-	7.            slotToExpunge = i;
-	    }
-	
-	    // If key not found, put new entry in stale slot
-		//如果在查找过程中没有找到可以覆盖的entry，则将新的entry插入在脏entry
-	8.    tab[staleSlot].value = null;
-	9.    tab[staleSlot] = new Entry(key, value);
-	
-	    // If there are any other stale entries in run, expunge them
-	10.    if (slotToExpunge != staleSlot)
-			//执行cleanSomeSlots
-	11.        cleanSomeSlots(expungeStaleEntry(slotToExpunge), len);
-	}
+// Back up to check for prior stale entry in current run.
+// We clean out whole runs at a time to avoid continual
+// incremental rehashing due to garbage collector freeing
+// up refs in bunches (i.e., whenever the collector runs).
 
+//向前找到第一个脏entry
+int slotToExpunge = staleSlot;
+for (int i = prevIndex(staleSlot, len);
+  (e = tab[i]) != null;
+  i = prevIndex(i, len))
+ if (e.get() == null)
+	 slotToExpunge = i;
+
+// Find either the key or trailing null slot of run, whichever
+// occurs first
+for (int i = nextIndex(staleSlot, len);
+  (e = tab[i]) != null;
+  i = nextIndex(i, len)) {
+ ThreadLocal<?> k = e.get();
+
+ // If we find key, then we need to swap it
+ // with the stale entry to maintain hash table order.
+ // The newly stale slot, or any other stale slot
+ // encountered above it, can then be sent to expungeStaleEntry
+ // to remove or rehash all of the other entries in run.
+ if (k == key) {
+		
+		//如果在向后环形查找过程中发现key相同的entry就覆盖并且和脏entry进行交换
+	   e.value = value;
+	   tab[i] = tab[staleSlot];
+	   tab[staleSlot] = e;
+
+	 // Start expunge at preceding stale entry if it exists
+		//如果在查找过程中还未发现脏entry，那么就以当前位置作为cleanSomeSlots
+		//的起点
+	 if (slotToExpunge == staleSlot)
+		   slotToExpunge = i;
+		//搜索脏entry并进行清理
+	   cleanSomeSlots(expungeStaleEntry(slotToExpunge), len);
+	 return;
+ }
+
+ // If we didn't find stale entry on backward scan, the
+ // first stale entry seen while scanning for key is the
+ // first still present in the run.
+	//如果向前未搜索到脏entry，则在查找过程遇到脏entry的话，后面就以此时这个位置
+	//作为起点执行cleanSomeSlots
+ if (k == null && slotToExpunge == staleSlot)
+	   slotToExpunge = i;
+}
+
+// If key not found, put new entry in stale slot
+//如果在查找过程中没有找到可以覆盖的entry，则将新的entry插入在脏entry
+tab[staleSlot].value = null;
+tab[staleSlot] = new Entry(key, value);
+
+// If there are any other stale entries in run, expunge them
+if (slotToExpunge != staleSlot)
+	//执行cleanSomeSlots
+	cleanSomeSlots(expungeStaleEntry(slotToExpunge), len);
+}
+```
 该方法的逻辑请看注释，下面我结合各种情况详细说一下该方法的执行过程。首先先看这一部分的代码：
-
-	int slotToExpunge = staleSlot;
-	    for (int i = prevIndex(staleSlot, len);
-	         (e = tab[i]) != null;
-	         i = prevIndex(i, len))
-	        if (e.get() == null)
-	            slotToExpunge = i;
-
+```java
+int slotToExpunge = staleSlot;
+	for (int i = prevIndex(staleSlot, len);
+		 (e = tab[i]) != null;
+		 i = prevIndex(i, len))
+		if (e.get() == null)
+			slotToExpunge = i;
+```
 这部分代码通过PreIndex方法实现往前环形搜索脏entry的功能，初始时slotToExpunge和staleSlot相同，若在搜索过程中发现了脏entry，则更新slotToExpunge为当前索引i。另外，说明replaceStaleEntry并不仅仅局限于处理当前已知的脏entry，它认为在出**现脏entry的相邻位置也有很大概率出现脏entry，所以为了一次处理到位，就需要向前环形搜索，找到前面的脏entry**。那么根据在向前搜索中是否还有脏entry以及在for循环后向环形查找中是否找到可覆盖的entry，我们分这四种情况来充分理解这个方法：
 
 - 1.前向有脏entry
@@ -293,19 +292,21 @@ threadLocal是为了解决**对象不能被多线程共享访问**的问题，�
 
 ![向前环形搜索到脏entry，向后环形查找到可覆盖的entry的情况.png](http://upload-images.jianshu.io/upload_images/2615789-ebc60645134a0342.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
 		
-		如图，slotToExpunge初始状态和staleSlot相同，当前向环形搜索遇到脏entry时，在第1行代码中slotToExpunge会更新为当前脏entry的索引i，直到遇到哈希桶（table[i]）为null的时候，前向搜索过程结束。在接下来的for循环中进行后向环形查找，若查找到了可覆盖的entry，第2,3,4行代码先覆盖当前位置的entry，然后再与staleSlot位置上的脏entry进行交换。交换之后脏entry就更换到了i处，最后使用cleanSomeSlots方法从slotToExpunge为起点开始进行清理脏entry的过程
+如图，slotToExpunge初始状态和staleSlot相同，当前向环形搜索遇到脏entry时，在第1行代码中slotToExpunge会更新为当前脏entry的索引i，直到遇到哈希桶（table[i]）为null的时候，前向搜索过程结束。在接下来的for循环中进行后向环形查找，若查找到了可覆盖的entry，第2,3,4行代码先覆盖当前位置的entry，然后再与staleSlot位置上的脏entry进行交换。交换之后脏entry就更换到了i处，最后使用cleanSomeSlots方法从slotToExpunge为起点开始进行清理脏entry的过程
 
-	- 1.2后向环形查找未找到可覆盖的entry 
+- 1.2后向环形查找未找到可覆盖的entry 
 		该情形如下图所示。
 		![前向环形搜索到脏entry,向后环形未搜索可覆盖entry.png](http://upload-images.jianshu.io/upload_images/2615789-423c8c8dfb2e9557.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
-		如图，slotToExpunge初始状态和staleSlot相同，当前向环形搜索遇到脏entry时，在第1行代码中slotToExpunge会更新为当前脏entry的索引i，直到遇到哈希桶（table[i]）为null的时候，前向搜索过程结束。在接下来的for循环中进行后向环形查找，若没有查找到了可覆盖的entry，哈希桶（table[i]）为null的时候，后向环形查找过程结束。那么接下来在8,9行代码中，将插入的新entry直接放在staleSlot处即可，最后使用cleanSomeSlots方法从slotToExpunge为起点开始进行清理脏entry的过程
+		
+如图，slotToExpunge初始状态和staleSlot相同，当前向环形搜索遇到脏entry时，在第1行代码中slotToExpunge会更新为当前脏entry的索引i，直到遇到哈希桶（table[i]）为null的时候，前向搜索过程结束。在接下来的for循环中进行后向环形查找，若没有查找到了可覆盖的entry，哈希桶（table[i]）为null的时候，后向环形查找过程结束。那么接下来在8,9行代码中，将插入的新entry直接放在staleSlot处即可，最后使用cleanSomeSlots方法从slotToExpunge为起点开始进行清理脏entry的过程
 
 - 2.前向没有脏entry
 
 	- 2.1后向环形查找找到可覆盖的entry 
 		该情形如下图所示。
 		![前向未搜索到脏entry，后向环形搜索到可覆盖的entry.png.png](http://upload-images.jianshu.io/upload_images/2615789-018d077773a019dc.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
-		如图，slotToExpunge初始状态和staleSlot相同，当前向环形搜索直到遇到哈希桶（table[i]）为null的时候，前向搜索过程结束，若在整个过程未遇到脏entry，slotToExpunge初始状态依旧和staleSlot相同。在接下来的for循环中进行后向环形查找，若遇到了脏entry，在第7行代码中更新slotToExpunge为位置i。若查找到了可覆盖的entry，第2,3,4行代码先覆盖当前位置的entry，然后再与staleSlot位置上的脏entry进行交换，交换之后脏entry就更换到了i处。如果在整个查找过程中都还没有遇到脏entry的话，会通过第5行代码，将slotToExpunge更新当前i处，最后使用cleanSomeSlots方法从slotToExpunge为起点开始进行清理脏entry的过程。
+		
+如图，slotToExpunge初始状态和staleSlot相同，当前向环形搜索直到遇到哈希桶（table[i]）为null的时候，前向搜索过程结束，若在整个过程未遇到脏entry，slotToExpunge初始状态依旧和staleSlot相同。在接下来的for循环中进行后向环形查找，若遇到了脏entry，在第7行代码中更新slotToExpunge为位置i。若查找到了可覆盖的entry，第2,3,4行代码先覆盖当前位置的entry，然后再与staleSlot位置上的脏entry进行交换，交换之后脏entry就更换到了i处。如果在整个查找过程中都还没有遇到脏entry的话，会通过第5行代码，将slotToExpunge更新当前i处，最后使用cleanSomeSlots方法从slotToExpunge为起点开始进行清理脏entry的过程。
 
 	 - 2.2后向环形查找未找到可覆盖的entry 
 		该情形如下图所示。
@@ -325,44 +326,43 @@ threadLocal是为了解决**对象不能被多线程共享访问**的问题，�
 
 **当我们调用threadLocal的get方法**时，当table[i]不是和所要找的key相同的话，会继续通过threadLocalMap的
 getEntryAfterMiss方法向后环形去找，该方法为：
+```java
+private Entry getEntryAfterMiss(ThreadLocal<?> key, int i, Entry e) {
+	Entry[] tab = table;
+	int len = tab.length;
 
-	private Entry getEntryAfterMiss(ThreadLocal<?> key, int i, Entry e) {
-	    Entry[] tab = table;
-	    int len = tab.length;
-	
-	    while (e != null) {
-	        ThreadLocal<?> k = e.get();
-	        if (k == key)
-	            return e;
-	        if (k == null)
-	            expungeStaleEntry(i);
-	        else
-	            i = nextIndex(i, len);
-	        e = tab[i];
-	    }
-	    return null;
+	while (e != null) {
+		ThreadLocal<?> k = e.get();
+		if (k == key)
+			return e;
+		if (k == null)
+			expungeStaleEntry(i);
+		else
+			i = nextIndex(i, len);
+		e = tab[i];
 	}
-
+	return null;
+}
+```
 当key==null的时候，即遇到脏entry也会调用expungeStleEntry对脏entry进行清理。
 
 **当我们调用threadLocal.remove方法时候**，实际上会调用threadLocalMap的remove方法，该方法的源码为：
-
-
-	private void remove(ThreadLocal<?> key) {
-	    Entry[] tab = table;
-	    int len = tab.length;
-	    int i = key.threadLocalHashCode & (len-1);
-	    for (Entry e = tab[i];
-	         e != null;
-	         e = tab[i = nextIndex(i, len)]) {
-	        if (e.get() == key) {
-	            e.clear();
-	            expungeStaleEntry(i);
-	            return;
-	        }
-	    }
+```java
+private void remove(ThreadLocal<?> key) {
+	Entry[] tab = table;
+	int len = tab.length;
+	int i = key.threadLocalHashCode & (len-1);
+	for (Entry e = tab[i];
+		 e != null;
+		 e = tab[i = nextIndex(i, len)]) {
+		if (e.get() == key) {
+			e.clear();
+			expungeStaleEntry(i);
+			return;
+		}
 	}
-
+}
+```
 同样的可以看出，当遇到了key为null的脏entry的时候，也会调用expungeStaleEntry清理掉脏entry。
 
 从以上set,getEntry,remove方法看出，**在threadLocal的生命周期里，针对threadLocal存在的内存泄漏的问题，都会通过expungeStaleEntry，cleanSomeSlots,replaceStaleEntry这三个方法清理掉key为null的脏entry**。
@@ -383,22 +383,22 @@ getEntryAfterMiss方法向后环形去找，该方法为：
 ## 2.5 Thread.exit() ##
 
 当线程退出时会执行exit方法：
-
-	private void exit() {
-	    if (group != null) {
-	        group.threadTerminated(this);
-	        group = null;
-	    }
-	    /* Aggressively null out all reference fields: see bug 4006245 */
-	    target = null;
-	    /* Speed the release of some of these resources */
-	    threadLocals = null;
-	    inheritableThreadLocals = null;
-	    inheritedAccessControlContext = null;
-	    blocker = null;
-	    uncaughtExceptionHandler = null;
+```java
+private void exit() {
+	if (group != null) {
+		group.threadTerminated(this);
+		group = null;
 	}
-
+	/* Aggressively null out all reference fields: see bug 4006245 */
+	target = null;
+	/* Speed the release of some of these resources */
+	threadLocals = null;
+	inheritableThreadLocals = null;
+	inheritedAccessControlContext = null;
+	blocker = null;
+	uncaughtExceptionHandler = null;
+}
+```
 从源码可以看出当线程结束时，会令threadLocals=null，也就意味着GC的时候就可以将threadLocalMap进行垃圾回收，换句话说threadLocalMap生命周期实际上thread的生命周期相同。
 
 # 3. threadLocal最佳实践 #

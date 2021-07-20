@@ -5,23 +5,24 @@
 
 ## 1.1 Node ##
 要想先学习ConcurrentLinkedQueue自然而然得先从它的节点类看起，明白它的底层数据结构。Node类的源码为：
-
-	private static class Node<E> {
-	        volatile E item;
-	        volatile Node<E> next;
-			.......
-	}
-
+```java
+private static class Node<E> {
+        volatile E item;
+        volatile Node<E> next;
+        .......
+}
+```
 Node节点主要包含了两个域：一个是数据域item，另一个是next指针，用于指向下一个节点从而构成链式队列。并且都是用volatile进行修饰的，以保证内存可见性（关于volatile[可以看这篇文章](https://juejin.im/post/5ae9b41b518825670b33e6c4)）。另外ConcurrentLinkedQueue含有这样两个成员变量：
-
-	private transient volatile Node<E> head;
-	private transient volatile Node<E> tail;
-
+```java
+private transient volatile Node<E> head;
+private transient volatile Node<E> tail;
+```
 说明ConcurrentLinkedQueue通过持有头尾指针进行管理队列。当我们调用无参构造器时，其源码为：
-
-	public ConcurrentLinkedQueue() {
-	    head = tail = new Node<E>(null);
-	}
+```java
+public ConcurrentLinkedQueue() {
+    head = tail = new Node<E>(null);
+}
+```
 head和tail指针会指向一个item域为null的节点,此时ConcurrentLinkedQueue状态如下图所示：
 
 如图，head和tail指向同一个节点Node0，该节点item域为null,next域为null。
@@ -35,71 +36,76 @@ head和tail指针会指向一个item域为null的节点,此时ConcurrentLinkedQu
 
 ## 1.2 操作Node的几个CAS操作  ##
 在队列进行出队入队的时候免不了对节点需要进行操作，在多线程就很容易出现线程安全的问题。可以看出在处理器指令集能够支持**CMPXCHG**指令后，在java源码中涉及到并发处理都会使用CAS操作[(关于CAS操作可以看这篇文章的第3.1节](https://juejin.im/post/5ae6dc04f265da0ba351d3ff))，那么在ConcurrentLinkedQueue对Node的CAS操作有这样几个：
-
-	//更改Node中的数据域item	
-	boolean casItem(E cmp, E val) {
-	    return UNSAFE.compareAndSwapObject(this, itemOffset, cmp, val);
-	}
-	//更改Node中的指针域next
-	void lazySetNext(Node<E> val) {
-	    UNSAFE.putOrderedObject(this, nextOffset, val);
-	}
-	//更改Node中的指针域next
-	boolean casNext(Node<E> cmp, Node<E> val) {
-	    return UNSAFE.compareAndSwapObject(this, nextOffset, cmp, val);
-	}
-
+```java
+//更改Node中的数据域item	
+boolean casItem(E cmp, E val) {
+    return UNSAFE.compareAndSwapObject(this, itemOffset, cmp, val);
+}
+//更改Node中的指针域next
+void lazySetNext(Node<E> val) {
+    UNSAFE.putOrderedObject(this, nextOffset, val);
+}
+//更改Node中的指针域next
+boolean casNext(Node<E> cmp, Node<E> val) {
+    return UNSAFE.compareAndSwapObject(this, nextOffset, cmp, val);
+}
+```
 可以看出这些方法实际上是通过调用UNSAFE实例的方法，UNSAFE为**sun.misc.Unsafe**类，该类是hotspot底层方法，目前为止了解即可，知道CAS的操作归根结底是由该类提供就好。
 
 # 2.offer方法 #
 对一个队列来说，插入满足FIFO特性，插入元素总是在队列最末尾的地方进行插入，而取（移除）元素总是从队列的队头。所有要想能够彻底弄懂ConcurrentLinkedQueue自然而然是从offer方法和poll方法开始。那么为了能够理解offer方法，采用debug的方式来一行一行的看代码走。另外，在看多线程的代码时，可采用这样的思维方式：
+**单个线程offer**
 
-> **单个线程offer**
-> **多个线程offer**
-> **部分线程offer，部分线程poll**
-> ----offer的速度快于poll
-> --------队列长度会越来越长，由于offer节点总是在对队列队尾，而poll节点总是在队列对头，也就是说offer线程和poll线程两者并无“交集”，也就是说两类线程间并不会相互影响，这种情况站在相对速率的角度来看，也就是一个"单线程offer"
-> ----offer的速度慢于poll
-> --------poll的相对速率快于offer，也就是队头删的速度要快于队尾添加节点的速度，导致的结果就是队列长度会越来越短，而offer线程和poll线程就会出现“交集”，即那一时刻就可以称之为offer线程和poll线程同时操作的节点为 **临界点** ，且在该节点offer线程和poll线程必定相互影响。根据在临界点时offer和poll发生的相对顺序又可从两个角度去思考：**1. 执行顺序为offer-->poll-->offer**，即表现为当offer线程在Node1后插入Node2时，此时poll线程已经将Node1删除，这种情况很显然需要在offer方法中考虑； **2.执行顺序可能为：poll-->offer-->poll**，即表现为当poll线程准备删除的节点为null时（队列为空队列），此时offer线程插入一个节点使得队列变为非空队列
+**多个线程offer**
 
+**部分线程offer，部分线程poll**
+
+----offer的速度快于poll
+
+--------队列长度会越来越长，由于offer节点总是在对队列队尾，而poll节点总是在队列对头，也就是说offer线程和poll线程两者并无“交集”，也就是说两类线程间并不会相互影响，这种情况站在相对速率的角度来看，也就是一个"单线程offer"
+
+----offer的速度慢于poll
+
+--------poll的相对速率快于offer，也就是队头删的速度要快于队尾添加节点的速度，导致的结果就是队列长度会越来越短，而offer线程和poll线程就会出现“交集”，即那一时刻就可以称之为offer线程和poll线程同时操作的节点为 **临界点** ，且在该节点offer线程和poll线程必定相互影响。根据在临界点时offer和poll发生的相对顺序又可从两个角度去思考：**1. 执行顺序为offer-->poll-->offer**，即表现为当offer线程在Node1后插入Node2时，此时poll线程已经将Node1删除，这种情况很显然需要在offer方法中考虑； **2.执行顺序可能为：poll-->offer-->poll**，即表现为当poll线程准备删除的节点为null时（队列为空队列），此时offer线程插入一个节点使得队列变为非空队列
 
 先看这么一段代码：
-
-	1. ConcurrentLinkedQueue<Integer> queue = new ConcurrentLinkedQueue<>();
-	2. queue.offer(1);
-	3. queue.offer(2);
+```java
+ConcurrentLinkedQueue<Integer> queue = new ConcurrentLinkedQueue<>();
+queue.offer(1);
+queue.offer(2);
+```
 创建一个ConcurrentLinkedQueue实例，先offer 1，然后再offer 2。offer的源码为：
+```java
+public boolean offer(E e) {
+  checkNotNull(e);
+  final Node<E> newNode = new Node<E>(e);
 
-	public boolean offer(E e) {
-	1.    checkNotNull(e);
-	2.    final Node<E> newNode = new Node<E>(e);
-	
-	3.    for (Node<E> t = tail, p = t;;) {
-	4.        Node<E> q = p.next;
-	5.        if (q == null) {
-	6.            // p is last node
-	7.            if (p.casNext(null, newNode)) {
-	                // Successful CAS is the linearization point
-	                // for e to become an element of this queue,
-	               // and for newNode to become "live".
-	8.                if (p != t) // hop two nodes at a time
-	9.                    casTail(t, newNode);  // Failure is OK.
-	10.                return true;
-	            }
-	            // Lost CAS race to another thread; re-read next
-	        }
-	11.        else if (p == q)
-	            // We have fallen off list.  If tail is unchanged, it
-	            // will also be off-list, in which case we need to
-	            // jump to head, from which all live nodes are always
-	            // reachable.  Else the new tail is a better bet.
-	12.            p = (t != (t = tail)) ? t : head;
-	           else
-	            // Check for tail updates after two hops.
-	13.            p = (p != t && t != (t = tail)) ? t : q;
-	    }
-	}
-
+  for (Node<E> t = tail, p = t;;) {
+      Node<E> q = p.next;
+      if (q == null) {
+          // p is last node
+          if (p.casNext(null, newNode)) {
+            // Successful CAS is the linearization point
+            // for e to become an element of this queue,
+           // and for newNode to become "live".
+              if (p != t) // hop two nodes at a time
+                  casTail(t, newNode);  // Failure is OK.
+               return true;
+        }
+        // Lost CAS race to another thread; re-read next
+    }
+       else if (p == q)
+        // We have fallen off list.  If tail is unchanged, it
+        // will also be off-list, in which case we need to
+        // jump to head, from which all live nodes are always
+        // reachable.  Else the new tail is a better bet.
+           p = (t != (t = tail)) ? t : head;
+       else
+        // Check for tail updates after two hops.
+           p = (p != t && t != (t = tail)) ? t : q;
+}
+}
+```
 
 **单线程执行角度分析**：
 
@@ -110,9 +116,9 @@ head和tail指针会指向一个item域为null的节点,此时ConcurrentLinkedQu
 如图，此时队列的尾节点应该为Node1,而tail指向的节点依然还是Node0,因此可以说明tail是延迟更新的。那么我们继续来看offer 2的时候的情况，很显然此时第4行q指向的节点不为null了，而是指向Node1,第5行if判断为false,第11行if判断为false,代码会走到第13行。好了，**再插入节点的时候我们会问自己这样一个问题？上面已经解释了tail并不是指向队列真正的尾节点，那么在插入节点的时候，我们是不是应该最开始做的就是找到队列当前的尾节点在哪里才能插入？**那么第13行代码就是**找出队列真正的尾节点**。
 
 > **定位队列真正的对尾节点**
-
-	p = (p != t && t != (t = tail)) ? t : q;
-
+```java
+p = (p != t && t != (t = tail)) ? t : q;
+```
 我们来分析一下这行代码，如果这段代码在**单线程环境**执行时，很显然由于p==t,此时p会被赋值为q,而q等于`Node<E> q = p.next`，即Node1。在第一次循环中指针p指向了队列真正的队尾节点Node1，那么在下一次循环中第4行q指向的节点为null，那么在第5行中if判断为true,那么在第7行依然通过casNext方法设置p节点的next为当前新增的Node,接下来走到第8行，这个时候p!=t，第8行if判断为true,会通过`casTail(t, newNode)`将当前节点Node设置为队列的队尾节点,此时的队列状态示意图如下图所示：
 ![3.队列offer 2后的状态.png](http://upload-images.jianshu.io/upload_images/2615789-6f8fe58d7a83fe61.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
 
@@ -152,32 +158,31 @@ head和tail指针会指向一个item域为null的节点,此时ConcurrentLinkedQu
 
 # 3.poll方法 #
 poll方法源码如下：
-
-	public E poll() {
-	    restartFromHead:
-	    1. for (;;) {
-	    2.    for (Node<E> h = head, p = h, q;;) {
-	    3.        E item = p.item;
-	
-	    4.        if (item != null && p.casItem(item, null)) {
-	                // Successful CAS is the linearization point
-	                // for item to be removed from this queue.
-	    5.            if (p != h) // hop two nodes at a time
-	    6.                updateHead(h, ((q = p.next) != null) ? q : p);
-	    7.            return item;
-	            }
-	    8.        else if ((q = p.next) == null) {
-	    9.            updateHead(h, p);
-	    10.            return null;
-	            }
-	    11.        else if (p == q)
-	    12.            continue restartFromHead;
-	            else
-	    13.            p = q;
-	        }
-	    }
-	}
-
+```java
+public E poll() {
+    restartFromHead:
+    for (;;) {
+       for (Node<E> h = head, p = h, q;;) {
+           E item = p.item;
+           if (item != null && p.casItem(item, null)) {
+             // Successful CAS is the linearization point
+             // for item to be removed from this queue.
+               if (p != h) // hop two nodes at a time
+                   updateHead(h, ((q = p.next) != null) ? q : p);
+               return item;
+         }
+           else if ((q = p.next) == null) {
+               updateHead(h, p);
+                return null;
+         }
+            else if (p == q)
+                continue restartFromHead;
+         else
+                p = q;
+        }
+    }
+}
+```
 我们还是先站在**单线程的角度**去理清该方法的基本逻辑。假设ConcurrentLinkedQueue初始状态如下图所示：
 
 
@@ -204,12 +209,12 @@ poll方法源码如下：
 
 
 进行下一次循环，第4行的操作同上述，当前假设第4行中casItem设置成功，由于p已经指向了Node2,而h还依旧指向Node1,此时第5行的if判断为true，然后执行`updateHead(h, ((q = p.next) != null) ? q : p)`，此时q指向的Node3，所有传入updateHead方法的分别是指向Node1的h引用和指向Node3的q引用。updateHead方法的源码为：
-
-	final void updateHead(Node<E> h, Node<E> p) {
-	    if (h != p && casHead(h, p))
-	        h.lazySetNext(h);
-	}
-
+```java
+final void updateHead(Node<E> h, Node<E> p) {
+    if (h != p && casHead(h, p))
+        h.lazySetNext(h);
+}
+```
 该方法主要是通过`casHead`将队列的head指向Node3,并且通过 `h.lazySetNext`将Node1的next域指向它自己。最后在第7行代码中返回Node2的值。此时队列的状态如下图所示：
 
 ![9.Node2从队列中出队后的状态.png](http://upload-images.jianshu.io/upload_images/2615789-5a93cb7a44f40745.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
@@ -230,32 +235,32 @@ Node1的next域指向它自己，head指向了Node3。如果队列为空队列�
 
 现在回过头来看poll方法的源码，有这样一部分：
 
-
-	else if (p == q)
-	    continue restartFromHead;
-
+```java
+else if (p == q) continue restartFromHead;
+```
 这一部分就是处理多个线程poll的情况，`q = p.next`也就是说q永远指向的是p的下一个节点，那么什么情况下会使得p,q指向同一个节点呢？根据上面我们的分析，只有p指向的节点在poll的时候转变成了**哨兵节点**（通过updateHead方法中的h.lazySetNext）。当线程A在判断`p==q`时，线程B已经将执行完poll方法将p指向的节点转换为**哨兵节点**并且head指向的节点已经发生了改变，所以就需要从restartFromHead处执行，保证用到的是最新的head。
 
 > **poll->offer->poll**
 
 试想，还有这样一种情况，如果当前队列为空队列，线程A进行poll操作，同时线程B执行offer，然后线程A在执行poll，那么此时线程A返回的是null还是线程B刚插入的最新的那个节点呢？我们来写一代demo：
-
-	public static void main(String[] args) {
-	    Thread thread1 = new Thread(() -> {
-	        Integer value = queue.poll();
-	        System.out.println(Thread.currentThread().getName() + " poll 的值为：" + value);
-	        System.out.println("queue当前是否为空队列：" + queue.isEmpty());
-	    });
-	    thread1.start();
-	    Thread thread2 = new Thread(() -> {
-	        queue.offer(1);
-	    });
-	    thread2.start();
-	}
-
+```java
+public static void main(String[] args) {
+    Thread thread1 = new Thread(() -> {
+        Integer value = queue.poll();
+        System.out.println(Thread.currentThread().getName() + " poll 的值为：" + value);
+        System.out.println("queue当前是否为空队列：" + queue.isEmpty());
+    });
+    thread1.start();
+    Thread thread2 = new Thread(() -> {
+        queue.offer(1);
+    });
+    thread2.start();
+}
+```
 输出结果为：
 
 > Thread-0 poll 的值为：null
+> 
 > queue当前是否为空队列：false
 
 

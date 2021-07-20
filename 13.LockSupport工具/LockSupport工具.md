@@ -21,43 +21,43 @@ void unpark(Thread thread):唤醒处于阻塞状态的指定线程
 实际上LockSupport阻塞和唤醒线程的功能是依赖于sun.misc.Unsafe，这是一个很底层的类，有兴趣的可以去查阅资料，比如park()方法的功能实现则是靠unsafe.park()方法。另外在阻塞线程这一系列方法中还有一个很有意思的现象就是，每个方法都会新增一个带有Object的阻塞对象的重载方法。那么增加了一个Object对象的入参会有什么不同的地方了？示例代码很简单就不说了，直接看dump线程的信息。
 
 **调用park()方法dump线程**：
-
-	"main" #1 prio=5 os_prio=0 tid=0x02cdcc00 nid=0x2b48 waiting on condition [0x00d6f000]
-	   java.lang.Thread.State: WAITING (parking)
-	        at sun.misc.Unsafe.park(Native Method)
-	        at java.util.concurrent.locks.LockSupport.park(LockSupport.java:304)
-	        at learn.LockSupportDemo.main(LockSupportDemo.java:7)
-
+```java
+"main" #1 prio=5 os_prio=0 tid=0x02cdcc00 nid=0x2b48 waiting on condition [0x00d6f000]
+   java.lang.Thread.State: WAITING (parking)
+        at sun.misc.Unsafe.park(Native Method)
+        at java.util.concurrent.locks.LockSupport.park(LockSupport.java:304)
+        at learn.LockSupportDemo.main(LockSupportDemo.java:7)
+```
 **调用park(Object blocker)方法dump线程**
-
-	"main" #1 prio=5 os_prio=0 tid=0x0069cc00 nid=0x6c0 waiting on condition [0x00dcf000]
-	   java.lang.Thread.State: WAITING (parking)
-	        at sun.misc.Unsafe.park(Native Method)
-	        - parking to wait for  <0x048c2d18> (a java.lang.String)
-	        at java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
-	        at learn.LockSupportDemo.main(LockSupportDemo.java:7)
-
+```java
+"main" #1 prio=5 os_prio=0 tid=0x0069cc00 nid=0x6c0 waiting on condition [0x00dcf000]
+   java.lang.Thread.State: WAITING (parking)
+        at sun.misc.Unsafe.park(Native Method)
+        - parking to wait for  <0x048c2d18> (a java.lang.String)
+        at java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+        at learn.LockSupportDemo.main(LockSupportDemo.java:7)
+```
 
 通过分别调用这两个方法然后dump线程信息可以看出，带Object的park方法相较于无参的park方法会增加 parking to wait for  <0x048c2d18> (a java.lang.String）的信息，这种信息就类似于记录“案发现场”，有助于工程人员能够迅速发现问题解决问题。有个有意思的事情是，我们都知道如果使用synchronzed阻塞了线程dump线程时都会有阻塞对象的描述，在java 5推出LockSupport时遗漏了这一点，在java 6时进行了补充。还有一点需要需要的是：**synchronzed致使线程阻塞，线程会进入到BLOCKED状态，而调用LockSupprt方法阻塞线程会致使线程进入到WAITING状态。**
 
 # 3. 一个例子 #
 
 用一个很简单的例子说说这些方法怎么用。
-
-	public class LockSupportDemo {
-	    public static void main(String[] args) {
-	        Thread thread = new Thread(() -> {
-	            LockSupport.park();
-	            System.out.println(Thread.currentThread().getName() + "被唤醒");
-	        });
-	        thread.start();
-	        try {
-	            Thread.sleep(3000);
-	        } catch (InterruptedException e) {
-	            e.printStackTrace();
-	        }
-	        LockSupport.unpark(thread);
-	    }
-	}
-
+```java
+public class LockSupportDemo {
+    public static void main(String[] args) {
+        Thread thread = new Thread(() -> {
+            LockSupport.park();
+            System.out.println(Thread.currentThread().getName() + "被唤醒");
+        });
+        thread.start();
+        try {
+            Thread.sleep(3000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        LockSupport.unpark(thread);
+    }
+}
+```
 thread线程调用LockSupport.park()致使thread阻塞，当mian线程睡眠3秒结束后通过LockSupport.unpark(thread)方法唤醒thread线程,thread线程被唤醒执行后续操作。另外，还有一点值得关注的是，**LockSupport.unpark(thread)可以指定线程对象唤醒指定的线程**。

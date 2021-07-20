@@ -22,57 +22,58 @@ CountDownLatch的方法不是很多，将它们一个个列举出来：
 4.   long getCount()：获取当前CountDownLatch维护的值；
 
 下面用一个具体的例子来说明CountDownLatch的具体用法:
+```java
+public class CountDownLatchDemo {
+private static CountDownLatch startSignal = new CountDownLatch(1);
+//用来表示裁判员需要维护的是6个运动员
+private static CountDownLatch endSignal = new CountDownLatch(6);
 
-	public class CountDownLatchDemo {
-	private static CountDownLatch startSignal = new CountDownLatch(1);
-	//用来表示裁判员需要维护的是6个运动员
-	private static CountDownLatch endSignal = new CountDownLatch(6);
-	
-	public static void main(String[] args) throws InterruptedException {
-	    ExecutorService executorService = Executors.newFixedThreadPool(6);
-	    for (int i = 0; i < 6; i++) {
-	        executorService.execute(() -> {
-	            try {
-	                System.out.println(Thread.currentThread().getName() + " 运动员等待裁判员响哨！！！");
-	                startSignal.await();
-	                System.out.println(Thread.currentThread().getName() + "正在全力冲刺");
-	                endSignal.countDown();
-	                System.out.println(Thread.currentThread().getName() + "  到达终点");
-	            } catch (InterruptedException e) {
-	                e.printStackTrace();
-	            }
-	        });
-	    }
-	    System.out.println("裁判员发号施令啦！！！");
-	    startSignal.countDown();
-	    endSignal.await();
-	    System.out.println("所有运动员到达终点，比赛结束！");
-	    executorService.shutdown();
-	}
-	}
-	输出结果：
-	
-	pool-1-thread-2 运动员等待裁判员响哨！！！
-	pool-1-thread-3 运动员等待裁判员响哨！！！
-	pool-1-thread-1 运动员等待裁判员响哨！！！
-	pool-1-thread-4 运动员等待裁判员响哨！！！
-	pool-1-thread-5 运动员等待裁判员响哨！！！
-	pool-1-thread-6 运动员等待裁判员响哨！！！
-	裁判员发号施令啦！！！
-	pool-1-thread-2正在全力冲刺
-	pool-1-thread-2  到达终点
-	pool-1-thread-3正在全力冲刺
-	pool-1-thread-3  到达终点
-	pool-1-thread-1正在全力冲刺
-	pool-1-thread-1  到达终点
-	pool-1-thread-4正在全力冲刺
-	pool-1-thread-4  到达终点
-	pool-1-thread-5正在全力冲刺
-	pool-1-thread-5  到达终点
-	pool-1-thread-6正在全力冲刺
-	pool-1-thread-6  到达终点
-	所有运动员到达终点，比赛结束！
-
+public static void main(String[] args) throws InterruptedException {
+    ExecutorService executorService = Executors.newFixedThreadPool(6);
+    for (int i = 0; i < 6; i++) {
+        executorService.execute(() -> {
+            try {
+                System.out.println(Thread.currentThread().getName() + " 运动员等待裁判员响哨！！！");
+                startSignal.await();
+                System.out.println(Thread.currentThread().getName() + "正在全力冲刺");
+                endSignal.countDown();
+                System.out.println(Thread.currentThread().getName() + "  到达终点");
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        });
+    }
+    System.out.println("裁判员发号施令啦！！！");
+    startSignal.countDown();
+    endSignal.await();
+    System.out.println("所有运动员到达终点，比赛结束！");
+    executorService.shutdown();
+}
+}
+```
+### 输出结果：
+```	
+pool-1-thread-2 运动员等待裁判员响哨！！！
+pool-1-thread-3 运动员等待裁判员响哨！！！
+pool-1-thread-1 运动员等待裁判员响哨！！！
+pool-1-thread-4 运动员等待裁判员响哨！！！
+pool-1-thread-5 运动员等待裁判员响哨！！！
+pool-1-thread-6 运动员等待裁判员响哨！！！
+裁判员发号施令啦！！！
+pool-1-thread-2正在全力冲刺
+pool-1-thread-2  到达终点
+pool-1-thread-3正在全力冲刺
+pool-1-thread-3  到达终点
+pool-1-thread-1正在全力冲刺
+pool-1-thread-1  到达终点
+pool-1-thread-4正在全力冲刺
+pool-1-thread-4  到达终点
+pool-1-thread-5正在全力冲刺
+pool-1-thread-5  到达终点
+pool-1-thread-6正在全力冲刺
+pool-1-thread-6  到达终点
+所有运动员到达终点，比赛结束！
+```
 该示例代码中设置了两个CountDownLatch，第一个`endSignal`用于控制让main线程（裁判员）必须等到其他线程（运动员）让CountDownLatch维护的数值N减到0为止。另一个`startSignal`用于让main线程对其他线程进行“发号施令”，startSignal引用的CountDownLatch初始值为1，而其他线程执行的run方法中都会先通过 ` startSignal.await()`让这些线程都被阻塞，直到main线程通过调用`startSignal.countDown();`，将值N减1，CountDownLatch维护的数值N为0后，其他线程才能往下执行，并且，每个线程执行的run方法中都会通过`endSignal.countDown();`对`endSignal`维护的数值进行减一，由于往线程池提交了6个任务，会被减6次，所以`endSignal`维护的值最终会变为0，因此main线程在`latch.await();`阻塞结束，才能继续往下执行。
 
 另外，需要注意的是，当调用CountDownLatch的countDown方法时，当前线程是不会被阻塞，会继续往下执行，比如在该例中会继续输出`pool-1-thread-4  到达终点`。
@@ -92,28 +93,28 @@ CyclicBarrier也是一种多线程并发控制的实用工具，和CountDownLatc
 
 下面来看下CyclicBarrier的主要方法：
 
+```java
+//等到所有的线程都到达指定的临界点
+await() throws InterruptedException, BrokenBarrierException 
 
-	//等到所有的线程都到达指定的临界点
-	await() throws InterruptedException, BrokenBarrierException 
-	
-	//与上面的await方法功能基本一致，只不过这里有超时限制，阻塞等待直至到达超时时间为止
-	await(long timeout, TimeUnit unit) throws InterruptedException, 
-	BrokenBarrierException, TimeoutException 
+//与上面的await方法功能基本一致，只不过这里有超时限制，阻塞等待直至到达超时时间为止
+await(long timeout, TimeUnit unit) throws InterruptedException, 
+BrokenBarrierException, TimeoutException 
 
-	//获取当前有多少个线程阻塞等待在临界点上
-	int getNumberWaiting()
-	
-	//用于查询阻塞等待的线程是否被中断
-	boolean isBroken()
+//获取当前有多少个线程阻塞等待在临界点上
+int getNumberWaiting()
 
-		
-	//将屏障重置为初始状态。如果当前有线程正在临界点等待的话，将抛出BrokenBarrierException。
-	void reset()
-	
+//用于查询阻塞等待的线程是否被中断
+boolean isBroken()
+
+    
+//将屏障重置为初始状态。如果当前有线程正在临界点等待的话，将抛出BrokenBarrierException。
+void reset()
+```
 另外需要注意的是，CyclicBarrier提供了这样的构造方法：
-
-	public CyclicBarrier(int parties, Runnable barrierAction)
-
+```java
+public CyclicBarrier(int parties, Runnable barrierAction)
+```
 可以用来，当指定的线程都到达了指定的临界点的时，接下来执行的操作可以由barrierAction传入即可。
 
 
@@ -121,49 +122,50 @@ CyclicBarrier也是一种多线程并发控制的实用工具，和CountDownLatc
 
 下面用一个简单的例子，来看下CyclicBarrier的用法，我们来模拟下上面的运动员的例子。
 
+```java
+public class CyclicBarrierDemo {
+    //指定必须有6个运动员到达才行
+    private static CyclicBarrier barrier = new CyclicBarrier(6, () -> {
+        System.out.println("所有运动员入场，裁判员一声令下！！！！！");
+    });
+    public static void main(String[] args) {
+        System.out.println("运动员准备进场，全场欢呼............");
 
-	public class CyclicBarrierDemo {
-	    //指定必须有6个运动员到达才行
-	    private static CyclicBarrier barrier = new CyclicBarrier(6, () -> {
-	        System.out.println("所有运动员入场，裁判员一声令下！！！！！");
-	    });
-	    public static void main(String[] args) {
-	        System.out.println("运动员准备进场，全场欢呼............");
-	
-	        ExecutorService service = Executors.newFixedThreadPool(6);
-	        for (int i = 0; i < 6; i++) {
-	            service.execute(() -> {
-	                try {
-	                    System.out.println(Thread.currentThread().getName() + " 运动员，进场");
-	                    barrier.await();
-	                    System.out.println(Thread.currentThread().getName() + "  运动员出发");
-	                } catch (InterruptedException e) {
-	                    e.printStackTrace();
-	                } catch (BrokenBarrierException e) {
-	                    e.printStackTrace();
-	                }
-	            });
-	        }
-	    }
-	
-	}
+        ExecutorService service = Executors.newFixedThreadPool(6);
+        for (int i = 0; i < 6; i++) {
+            service.execute(() -> {
+                try {
+                    System.out.println(Thread.currentThread().getName() + " 运动员，进场");
+                    barrier.await();
+                    System.out.println(Thread.currentThread().getName() + "  运动员出发");
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                } catch (BrokenBarrierException e) {
+                    e.printStackTrace();
+                }
+            });
+        }
+    }
 
-	输出结果：
-	运动员准备进场，全场欢呼............
-	pool-1-thread-2 运动员，进场
-	pool-1-thread-1 运动员，进场
-	pool-1-thread-3 运动员，进场
-	pool-1-thread-4 运动员，进场
-	pool-1-thread-5 运动员，进场
-	pool-1-thread-6 运动员，进场
-	所有运动员入场，裁判员一声令下！！！！！
-	pool-1-thread-6  运动员出发
-	pool-1-thread-1  运动员出发
-	pool-1-thread-5  运动员出发
-	pool-1-thread-4  运动员出发
-	pool-1-thread-3  运动员出发
-	pool-1-thread-2  运动员出发
-
+}
+```
+####	输出结果：
+```
+运动员准备进场，全场欢呼............
+pool-1-thread-2 运动员，进场
+pool-1-thread-1 运动员，进场
+pool-1-thread-3 运动员，进场
+pool-1-thread-4 运动员，进场
+pool-1-thread-5 运动员，进场
+pool-1-thread-6 运动员，进场
+所有运动员入场，裁判员一声令下！！！！！
+pool-1-thread-6  运动员出发
+pool-1-thread-1  运动员出发
+pool-1-thread-5  运动员出发
+pool-1-thread-4  运动员出发
+pool-1-thread-3  运动员出发
+pool-1-thread-2  运动员出发
+```
 从输出结果可以看出，当6个运动员（线程）都到达了指定的临界点（barrier）时候，才能继续往下执行，否则，则会阻塞等待在调用`await()`处
 
 

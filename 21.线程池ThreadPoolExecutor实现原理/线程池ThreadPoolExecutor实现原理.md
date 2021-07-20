@@ -24,15 +24,15 @@
 # 3. 线程池的创建 #
 
 创建线程池主要是**ThreadPoolExecutor**类来完成，ThreadPoolExecutor的有许多重载的构造方法，通过参数最多的构造方法来理解创建线程池有哪些需要配置的参数。ThreadPoolExecutor的构造方法为：
-
-	ThreadPoolExecutor(int corePoolSize,
-	                              int maximumPoolSize,
-	                              long keepAliveTime,
-	                              TimeUnit unit,
-	                              BlockingQueue<Runnable> workQueue,
-	                              ThreadFactory threadFactory,
-	                              RejectedExecutionHandler handler)
-
+```java
+ThreadPoolExecutor(int corePoolSize,
+  int maximumPoolSize,
+  long keepAliveTime,
+  TimeUnit unit,
+  BlockingQueue<Runnable> workQueue,
+  ThreadFactory threadFactory,
+  RejectedExecutionHandler handler)
+```
 下面对参数进行说明：
 
 1. corePoolSize：表示核心线程池的大小。当提交一个任务时，如果当前核心线程池的线程个数没有达到corePoolSize，则会创建新的线程来执行所提交的任务，**即使当前核心线程池有空闲的线程**。如果当前核心线程池的线程个数已经达到了corePoolSize，则不再重新创建线程。如果调用了`prestartCoreThread()`或者 `prestartAllCoreThreads()`，线程池创建的时候所有的核心线程都会被创建并且启动。
@@ -51,50 +51,50 @@
 
 通过ThreadPoolExecutor创建线程池后，提交任务后执行过程是怎样的，下面来通过源码来看一看。execute方法源码如下：
 
-
-	public void execute(Runnable command) {
-	    if (command == null)
-	        throw new NullPointerException();
-	    /*
-	     * Proceed in 3 steps:
-	     *
-	     * 1. If fewer than corePoolSize threads are running, try to
-	     * start a new thread with the given command as its first
-	     * task.  The call to addWorker atomically checks runState and
-	     * workerCount, and so prevents false alarms that would add
-	     * threads when it shouldn't, by returning false.
-	     *
-	     * 2. If a task can be successfully queued, then we still need
-	     * to double-check whether we should have added a thread
-	     * (because existing ones died since last checking) or that
-	     * the pool shut down since entry into this method. So we
-	     * recheck state and if necessary roll back the enqueuing if
-	     * stopped, or start a new thread if there are none.
-	     *
-	     * 3. If we cannot queue task, then we try to add a new
-	     * thread.  If it fails, we know we are shut down or saturated
-	     * and so reject the task.
-	     */
-	    int c = ctl.get();
-		//如果线程池的线程个数少于corePoolSize则创建新线程执行当前任务
-	    if (workerCountOf(c) < corePoolSize) {
-	        if (addWorker(command, true))
-	            return;
-	        c = ctl.get();
-	    }
-		//如果线程个数大于corePoolSize或者创建线程失败，则将任务存放在阻塞队列workQueue中
-	    if (isRunning(c) && workQueue.offer(command)) {
-	        int recheck = ctl.get();
-	        if (! isRunning(recheck) && remove(command))
-	            reject(command);
-	        else if (workerCountOf(recheck) == 0)
-	            addWorker(null, false);
-	    }
-		//如果当前任务无法放进阻塞队列中，则创建新的线程来执行任务
-	    else if (!addWorker(command, false))
-	        reject(command);
+```java
+public void execute(Runnable command) {
+	if (command == null)
+		throw new NullPointerException();
+	/*
+	 * Proceed in 3 steps:
+	 *
+	 * 1. If fewer than corePoolSize threads are running, try to
+	 * start a new thread with the given command as its first
+	 * task.  The call to addWorker atomically checks runState and
+	 * workerCount, and so prevents false alarms that would add
+	 * threads when it shouldn't, by returning false.
+	 *
+	 * 2. If a task can be successfully queued, then we still need
+	 * to double-check whether we should have added a thread
+	 * (because existing ones died since last checking) or that
+	 * the pool shut down since entry into this method. So we
+	 * recheck state and if necessary roll back the enqueuing if
+	 * stopped, or start a new thread if there are none.
+	 *
+	 * 3. If we cannot queue task, then we try to add a new
+	 * thread.  If it fails, we know we are shut down or saturated
+	 * and so reject the task.
+	 */
+	int c = ctl.get();
+	//如果线程池的线程个数少于corePoolSize则创建新线程执行当前任务
+	if (workerCountOf(c) < corePoolSize) {
+		if (addWorker(command, true))
+			return;
+		c = ctl.get();
 	}
-
+	//如果线程个数大于corePoolSize或者创建线程失败，则将任务存放在阻塞队列workQueue中
+	if (isRunning(c) && workQueue.offer(command)) {
+		int recheck = ctl.get();
+		if (! isRunning(recheck) && remove(command))
+			reject(command);
+		else if (workerCountOf(recheck) == 0)
+			addWorker(null, false);
+	}
+	//如果当前任务无法放进阻塞队列中，则创建新的线程来执行任务
+	else if (!addWorker(command, false))
+		reject(command);
+}
+```
 ThreadPoolExecutor的execute方法执行逻辑请见注释。下图为ThreadPoolExecutor的execute方法的执行示意图：
 
 ![execute执行过程示意图.jpg](https://upload-images.jianshu.io/upload_images/2615789-1c5c07e48180130a.jpg?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)

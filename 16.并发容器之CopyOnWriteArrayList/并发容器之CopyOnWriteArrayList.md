@@ -15,55 +15,56 @@ COW通俗的理解是当我们往一个容器添加元素的时候，不直接�
 
 # 3. CopyOnWriteArrayList的实现原理 #
 现在我们来通过看源码的方式来理解CopyOnWriteArrayList，实际上CopyOnWriteArrayList内部维护的就是一个数组
-
-	/** The array, accessed only via getArray/setArray. */
-	private transient volatile Object[] array;
-
+```java
+/** The array, accessed only via getArray/setArray. */
+private transient volatile Object[] array;
+```
 并且该数组引用是被volatile修饰，注意这里**仅仅是修饰的是数组引用**，其中另有玄机，稍后揭晓。关于volatile很重要的一条性质是它能够够保证可见性，关于volatile的详细讲解可以看[这篇文章](https://juejin.im/post/5ae9b41b518825670b33e6c4)。对list来说，我们自然而然最关心的就是读写的时候，分别为get和add方法的实现。
 
 ## 3.1 get方法实现原理 ##
 
 get方法的源码为：
-
-	public E get(int index) {
-	    return get(getArray(), index);
-	}
-	/**
-	 * Gets the array.  Non-private so as to also be accessible
-	 * from CopyOnWriteArraySet class.
-	 */
-	final Object[] getArray() {
-	    return array;
-	}
-	private E get(Object[] a, int index) {
-	    return (E) a[index];
-	}
+```java
+public E get(int index) {
+    return get(getArray(), index);
+}
+/**
+ * Gets the array.  Non-private so as to also be accessible
+ * from CopyOnWriteArraySet class.
+ */
+final Object[] getArray() {
+    return array;
+}
+private E get(Object[] a, int index) {
+    return (E) a[index];
+}
+```
 可以看出来get方法实现非常简单，几乎就是一个“单线程”程序，没有对多线程添加任何的线程安全控制，也没有加锁也没有CAS操作等等，原因是，所有的读线程只是会读取数据容器中的数据，并不会进行修改。
 
 ## 3.2 add方法实现原理 ##
 
 再来看下如何进行添加数据的？add方法的源码为：
-
-	public boolean add(E e) {
-	    final ReentrantLock lock = this.lock;
-		//1. 使用Lock,保证写线程在同一时刻只有一个
-	    lock.lock();
-	    try {
-			//2. 获取旧数组引用
-	        Object[] elements = getArray();
-	        int len = elements.length;
-			//3. 创建新的数组，并将旧数组的数据复制到新数组中
-	        Object[] newElements = Arrays.copyOf(elements, len + 1);
-			//4. 往新数组中添加新的数据	        
-			newElements[len] = e;
-			//5. 将旧数组引用指向新的数组
-	        setArray(newElements);
-	        return true;
-	    } finally {
-	        lock.unlock();
-	    }
-	}
-
+```java
+public boolean add(E e) {
+    final ReentrantLock lock = this.lock;
+    //1. 使用Lock,保证写线程在同一时刻只有一个
+    lock.lock();
+    try {
+        //2. 获取旧数组引用
+        Object[] elements = getArray();
+        int len = elements.length;
+        //3. 创建新的数组，并将旧数组的数据复制到新数组中
+        Object[] newElements = Arrays.copyOf(elements, len + 1);
+        //4. 往新数组中添加新的数据	        
+        newElements[len] = e;
+        //5. 将旧数组引用指向新的数组
+        setArray(newElements);
+        return true;
+    } finally {
+        lock.unlock();
+    }
+}
+```
 add方法的逻辑也比较容易理解，请看上面的注释。需要注意这么几点：
 
 1. 采用ReentrantLock，保证同一时刻只有一个写线程正在进行数组的复制，否则的话内存中会有多份被复制的数据；
@@ -79,13 +80,13 @@ add方法的逻辑也比较容易理解，请看上面的注释。需要注意�
 不同点：**对读线程而言，为了实现数据实时性，在写锁被获取后，读线程会等待或者当读锁被获取后，写线程会等待，从而解决“脏读”等问题。也就是说如果使用读写锁依然会出现读线程阻塞等待的情况。而COW则完全放开了牺牲数据实时性而保证数据最终一致性，即读线程对数据的更新是延时感知的，因此读线程不会存在等待的情况**。
 
 对这一点从文字上还是很难理解，我们来通过debug看一下，add方法核心代码为：
-
-	1.Object[] elements = getArray();
-	2.int len = elements.length;
-	3.Object[] newElements = Arrays.copyOf(elements, len + 1);
-	4.newElements[len] = e;
-	5.setArray(newElements);
-
+```java
+Object[] elements = getArray();
+int len = elements.length;
+Object[] newElements = Arrays.copyOf(elements, len + 1);
+newElements[len] = e;
+setArray(newElements);
+```
 假设COW的变化如下图所示：
 
 

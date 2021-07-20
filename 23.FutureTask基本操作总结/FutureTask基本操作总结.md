@@ -2,15 +2,15 @@
 # 1.FutureTask简介 #
 
 在Executors框架体系中，FutureTask用来表示可获取结果的异步任务。FutureTask实现了Future接口，FutureTask提供了启动和取消异步任务，查询异步任务是否计算结束以及获取最终的异步任务的结果的一些常用的方法。通过`get()`方法来获取异步任务的结果，但是会阻塞当前线程直至异步任务执行结束。一旦任务执行结束，任务不能重新启动或取消，除非调用`runAndReset()`方法。在FutureTask的源码中为其定义了这些状态：
-
-	private static final int NEW          = 0;
-	private static final int COMPLETING   = 1;
-	private static final int NORMAL       = 2;
-	private static final int EXCEPTIONAL  = 3;
-	private static final int CANCELLED    = 4;
-	private static final int INTERRUPTING = 5;
-	private static final int INTERRUPTED  = 6;
-
+```java
+private static final int NEW          = 0;
+private static final int COMPLETING   = 1;
+private static final int NORMAL       = 2;
+private static final int EXCEPTIONAL  = 3;
+private static final int CANCELLED    = 4;
+private static final int INTERRUPTING = 5;
+private static final int INTERRUPTED  = 6;
+```
 另外，在《java并发编程的艺术》一书，作者根据FutureTask.run()方法的执行的时机，FutureTask分为了3种状态：
 
 

@@ -49,25 +49,26 @@ atomic包提高原子更新基本类型的工具类，主要有这些：
 4. getAndIncrement()：以原子的方式将实例中的原值加1，返回的是自增前的旧值；
 
 还有一些方法，可以查看API，不再赘述。为了能够弄懂AtomicInteger的实现原理，以getAndIncrement方法为例，来看下源码：
-
-	public final int getAndIncrement() {
-	    return unsafe.getAndAddInt(this, valueOffset, 1);
-	}
-
+```java
+public final int getAndIncrement() {
+    return unsafe.getAndAddInt(this, valueOffset, 1);
+}
+```
 可以看出，该方法实际上是调用了unsafe实例的getAndAddInt方法，unsafe实例的获取时通过UnSafe类的静态方法getUnsafe获取：
-
-	private static final Unsafe unsafe = Unsafe.getUnsafe();
-
+```java
+private static final Unsafe unsafe = Unsafe.getUnsafe();
+```
 Unsafe类在sun.misc包下，Unsafer类提供了一些底层操作，atomic包下的原子操作类的也主要是通过Unsafe类提供的compareAndSwapInt，compareAndSwapLong等一系列提供CAS操作的方法来进行实现。下面用一个简单的例子来说明AtomicInteger的用法：
+```java
+public class AtomicDemo {
+    private static AtomicInteger atomicInteger = new AtomicInteger(1);
 
-	public class AtomicDemo {
-	    private static AtomicInteger atomicInteger = new AtomicInteger(1);
-	
-	    public static void main(String[] args) {
-	        System.out.println(atomicInteger.getAndIncrement());
-	        System.out.println(atomicInteger.get());
-	    }
-	}
+    public static void main(String[] args) {
+        System.out.println(atomicInteger.getAndIncrement());
+        System.out.println(atomicInteger.get());
+    }
+}
+```
 	输出结果：
 	1
 	2
@@ -75,13 +76,13 @@ Unsafe类在sun.misc包下，Unsafer类提供了一些底层操作，atomic包�
 例子很简单，就是新建了一个atomicInteger对象，而atomicInteger的构造方法也就是传入一个基本类型数据即可，对其进行了封装。对基本变量的操作比如自增，自减，相加，更新等操作，atomicInteger也提供了相应的方法进行这些操作。但是，因为atomicInteger借助了UnSafe提供的CAS操作能够保证数据更新的时候是线程安全的，并且由于CAS是采用乐观锁策略，因此，这种数据更新的方法也具有高效性。
 
 AtomicLong的实现原理和AtomicInteger一致，只不过一个针对的是long变量，一个针对的是int变量。而boolean变量的更新类AtomicBoolean类是怎样实现更新的呢?核心方法是`compareAndSet`t方法，其源码如下：
-
-	public final boolean compareAndSet(boolean expect, boolean update) {
-	    int e = expect ? 1 : 0;
-	    int u = update ? 1 : 0;
-	    return unsafe.compareAndSwapInt(this, valueOffset, e, u);
-	}
-
+```java
+public final boolean compareAndSet(boolean expect, boolean update) {
+    int e = expect ? 1 : 0;
+    int u = update ? 1 : 0;
+    return unsafe.compareAndSwapInt(this, valueOffset, e, u);
+}
+```
 
 可以看出，compareAndSet方法的实际上也是先转换成0,1的整型变量，然后是通过针对int型变量的原子更新方法compareAndSwapInt来实现的。可以看出atomic包中只提供了对boolean,int ,long这三种基本类型的原子更新的方法，参考对boolean更新的方式，原子更新char,doule,float也可以采用类似的思路进行实现。
 
@@ -101,19 +102,20 @@ atomic包下提供能原子更新数组中元素的类有：
 
 可以看出，AtomicIntegerArray与AtomicInteger的方法基本一致，只不过在AtomicIntegerArray的方法中会多一个指定数组索引位i。下面举一个简单的例子：
 
+```java
+public class AtomicDemo {
+    //    private static AtomicInteger atomicInteger = new AtomicInteger(1);
+    private static int[] value = new int[]{1, 2, 3};
+    private static AtomicIntegerArray integerArray = new AtomicIntegerArray(value);
 
-	public class AtomicDemo {
-	    //    private static AtomicInteger atomicInteger = new AtomicInteger(1);
-	    private static int[] value = new int[]{1, 2, 3};
-	    private static AtomicIntegerArray integerArray = new AtomicIntegerArray(value);
-	
-	    public static void main(String[] args) {
-	        //对数组中索引为1的位置的元素加5
-	        int result = integerArray.getAndAdd(1, 5);
-	        System.out.println(integerArray.get(1));
-	        System.out.println(result);
-	    }
-	}
+    public static void main(String[] args) {
+        //对数组中索引为1的位置的元素加5
+        int result = integerArray.getAndAdd(1, 5);
+        System.out.println(integerArray.get(1));
+        System.out.println(result);
+    }
+}
+```
 	输出结果：
 	7
 	2
@@ -129,39 +131,39 @@ atomic包下提供能原子更新数组中元素的类有：
 
 这几个类的使用方法也是基本一样的，以AtomicReference为例，来说明这些类的基本用法。下面是一个demo
 
+```
+public class AtomicDemo {
 
-	public class AtomicDemo {
-	
-	    private static AtomicReference<User> reference = new AtomicReference<>();
-	
-	    public static void main(String[] args) {
-	        User user1 = new User("a", 1);
-	        reference.set(user1);
-	        User user2 = new User("b",2);
-	        User user = reference.getAndSet(user2);
-	        System.out.println(user);
-	        System.out.println(reference.get());
-	    }
-	
-	    static class User {
-	        private String userName;
-	        private int age;
-	
-	        public User(String userName, int age) {
-	            this.userName = userName;
-	            this.age = age;
-	        }
-	
-	        @Override
-	        public String toString() {
-	            return "User{" +
-	                    "userName='" + userName + '\'' +
-	                    ", age=" + age +
-	                    '}';
-	        }
-	    }
-	}
+    private static AtomicReference<User> reference = new AtomicReference<>();
 
+    public static void main(String[] args) {
+        User user1 = new User("a", 1);
+        reference.set(user1);
+        User user2 = new User("b",2);
+        User user = reference.getAndSet(user2);
+        System.out.println(user);
+        System.out.println(reference.get());
+    }
+
+    static class User {
+        private String userName;
+        private int age;
+
+        public User(String userName, int age) {
+            this.userName = userName;
+            this.age = age;
+        }
+
+        @Override
+        public String toString() {
+            return "User{" +
+                    "userName='" + userName + '\'' +
+                    ", age=" + age +
+                    '}';
+        }
+    }
+}
+```
 	输出结果：
 	User{userName='a', age=1}
 	User{userName='b', age=2}
@@ -182,36 +184,36 @@ atomic包下提供能原子更新数组中元素的类有：
 2. 更新类的属性必须使用`public volatile`进行修饰；
 
 这几个类提供的方法基本一致，以AtomicIntegerFieldUpdater为例来看看具体的使用：
+```java
+public class AtomicDemo {
 
-	public class AtomicDemo {
-	
-	    private static AtomicIntegerFieldUpdater updater = AtomicIntegerFieldUpdater.newUpdater(User.class,"age");
-	    public static void main(String[] args) {
-	        User user = new User("a", 1);
-	        int oldValue = updater.getAndAdd(user, 5);
-	        System.out.println(oldValue);
-	        System.out.println(updater.get(user));
-	    }
-	
-	    static class User {
-	        private String userName;
-	        public volatile int age;
-	
-	        public User(String userName, int age) {
-	            this.userName = userName;
-	            this.age = age;
-	        }
-	
-	        @Override
-	        public String toString() {
-	            return "User{" +
-	                    "userName='" + userName + '\'' +
-	                    ", age=" + age +
-	                    '}';
-	        }
-	    }
-	} 
+    private static AtomicIntegerFieldUpdater updater = AtomicIntegerFieldUpdater.newUpdater(User.class,"age");
+    public static void main(String[] args) {
+        User user = new User("a", 1);
+        int oldValue = updater.getAndAdd(user, 5);
+        System.out.println(oldValue);
+        System.out.println(updater.get(user));
+    }
 
+    static class User {
+        private String userName;
+        public volatile int age;
+
+        public User(String userName, int age) {
+            this.userName = userName;
+            this.age = age;
+        }
+
+        @Override
+        public String toString() {
+            return "User{" +
+                    "userName='" + userName + '\'' +
+                    ", age=" + age +
+                    '}';
+        }
+    }
+} 
+```
 	输出结果：
 	1
 	6
