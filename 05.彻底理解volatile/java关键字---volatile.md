@@ -8,8 +8,9 @@
 
 # 2. volatile实现原理 #
 volatile是怎样实现了？比如一个很简单的Java代码：
-> instance = new Instancce()  //instance是volatile变量
-
+```java
+instance = new Instancce()  //instance是volatile变量
+```
 在生成汇编代码时会在volatile修饰的共享变量进行写操作的时候会多出**Lock前缀的指令**（具体的大家可以使用一些工具去看一下，这里我就只把结果说出来）。我们想这个**Lock**指令肯定有神奇的地方，那么Lock前缀的指令在多核处理器下会发现什么事情了？主要有这两个方面的影响：
 
 1. 将当前处理器缓存行的数据写回系统内存；
@@ -29,21 +30,21 @@ volatile是怎样实现了？比如一个很简单的Java代码：
 经过上面的分析，我们已经知道了volatile变量可以通过**缓存一致性协议**保证每个线程都能获得最新值，即满足数据的“可见性”。我们继续延续上一篇分析问题的方式（我一直认为思考问题的方式是属于自己，也才是最重要的，也在不断培养这方面的能力），我一直将并发分析的切入点分为**两个核心，三大性质**。两大核心：JMM内存模型（主内存和工作内存）以及happens-before；三条性质：原子性，可见性，有序性（关于三大性质的总结在以后得文章会和大家共同探讨）。废话不多说，先来看两个核心之一：volatile的happens-before关系。
 
 在六条[happens-before规则](https://juejin.im/post/5ae6d309518825673123fd0e)中有一条是：**volatile变量规则：对一个volatile域的写，happens-before于任意后续对这个volatile域的读。**下面我们结合具体的代码，我们利用这条规则推导下：
-
-	public class VolatileExample {
-	    private int a = 0;
-	    private volatile boolean flag = false;
-	    public void writer(){
-	        a = 1;          //1
-	        flag = true;   //2
-	    }
-	    public void reader(){
-	        if(flag){      //3
-	            int i = a; //4
-	        }
-	    }
-	}
-
+```java
+public class VolatileExample {
+    private int a = 0;
+    private volatile boolean flag = false;
+    public void writer(){
+        a = 1;          //1
+        flag = true;   //2
+    }
+    public void reader(){
+        if(flag){      //3
+            int i = a; //4
+        }
+    }
+}
+```
 上面的实例代码对应的happens-before关系如下图所示：
 
 ![VolatileExample的happens-before关系推导](http://upload-images.jianshu.io/upload_images/2615789-c9c291d6c0b3e0f1.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
@@ -106,27 +107,27 @@ java编译器会在生成指令系列时在适当的位置会插入内存屏障�
 ![volatile读插入内存屏障示意图](http://upload-images.jianshu.io/upload_images/2615789-dc628461898a66a6.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/620)
 # 5. 一个示例 #
 我们现在已经理解volatile的精华了，文章开头的那个问题我想现在我们都能给出答案了。更正后的代码为：
+```java
+public class VolatileDemo {
+    private static volatile boolean isOver = false;
 
-	public class VolatileDemo {
-	    private static volatile boolean isOver = false;
-	
-	    public static void main(String[] args) {
-	        Thread thread = new Thread(new Runnable() {
-	            @Override
-	            public void run() {
-	                while (!isOver) ;
-	            }
-	        });
-	        thread.start();
-	        try {
-	            Thread.sleep(500);
-	        } catch (InterruptedException e) {
-	            e.printStackTrace();
-	        }
-	        isOver = true;
-	    }
-	}
-
+    public static void main(String[] args) {
+        Thread thread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                while (!isOver) ;
+            }
+        });
+        thread.start();
+        try {
+            Thread.sleep(500);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        isOver = true;
+    }
+}
+```
 注意不同点，现在已经**将isOver设置成了volatile变量**，这样在main线程中将isOver改为了true后，thread的工作内存该变量值就会失效，从而需要再次从主内存中读取该值，现在能够读出isOver最新值为true从而能够结束在thread里的死循环，从而能够顺利停止掉thread线程。现在问题也解决了，知识也学到了：）。（如果觉得还不错，请点赞，是对我的一个鼓励。）
 
 > 参考文献
