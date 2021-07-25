@@ -12,7 +12,8 @@ private static class Node<E> {
         .......
 }
 ```
-Node节点主要包含了两个域：一个是数据域item，另一个是next指针，用于指向下一个节点从而构成链式队列。并且都是用volatile进行修饰的，以保证内存可见性（关于volatile[可以看这篇文章](https://juejin.im/post/5ae9b41b518825670b33e6c4)）。另外ConcurrentLinkedQueue含有这样两个成员变量：
+Node节点主要包含了两个域：一个是数据域item，另一个是next指针，用于指向下一个节点从而构成链式队列。并且都是用volatile进行修饰的，以保证内存可见性（关于volatile[可以看这篇文章](https://juejin.im/post/5ae9b41b518825670b33e6c4)
+）。另外ConcurrentLinkedQueue含有这样两个成员变量：
 ```java
 private transient volatile Node<E> head;
 private transient volatile Node<E> tail;
@@ -35,7 +36,8 @@ head和tail指针会指向一个item域为null的节点,此时ConcurrentLinkedQu
 
 
 ## 1.2 操作Node的几个CAS操作  ##
-在队列进行出队入队的时候免不了对节点需要进行操作，在多线程就很容易出现线程安全的问题。可以看出在处理器指令集能够支持**CMPXCHG**指令后，在java源码中涉及到并发处理都会使用CAS操作[(关于CAS操作可以看这篇文章的第3.1节](https://juejin.im/post/5ae6dc04f265da0ba351d3ff))，那么在ConcurrentLinkedQueue对Node的CAS操作有这样几个：
+在队列进行出队入队的时候免不了对节点需要进行操作，在多线程就很容易出现线程安全的问题。可以看出在处理器指令集能够支持**CMPXCHG**指令后，在java源码中涉及到并发处理都会使用CAS操作[(关于CAS操作可以看这篇文章的第3.1节](https://juejin.im/post/5ae6dc04f265da0ba351d3ff)
+)，那么在ConcurrentLinkedQueue对Node的CAS操作有这样几个：
 ```java
 //更改Node中的数据域item	
 boolean casItem(E cmp, E val) {

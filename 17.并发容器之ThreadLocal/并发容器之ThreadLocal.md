@@ -105,7 +105,7 @@ public void remove() {
 		m.remove(this);
 }
 ```
-get,set方法实现了存数据和读数据，我们当然还得学会如何删数据**。删除数据当然是从map中删除数据，先获取与当前线程相关联的threadLocalMap然后从map中删除该threadLocal实例为key的键值对即可**。
+get,set方法实现了存数据和读数据，我们当然还得学会如何删数据。**删除数据当然是从map中删除数据，先获取与当前线程相关联的threadLocalMap然后从map中删除该threadLocal实例为key的键值对即可**。
 # 3. ThreadLocalMap详解 #
 从上面的分析我们已经知道，数据其实都放在了threadLocalMap中，threadLocal的get，set和remove方法实际上具体是通过threadLocalMap的getEntry,set和remove方法实现的。如果想真正全方位的弄懂threadLocal，势必得在对threadLocalMap做一番理解。
 
@@ -131,17 +131,20 @@ static class Entry extends WeakReference<ThreadLocal<?>> {
 	}
 }
 ```
-Entry是一个以ThreadLocal为key,Object为value的键值对，另外需要注意的是这里的**threadLocal是弱引用，因为Entry继承了WeakReference，在Entry的构造方法中，调用了super(k)方法就会将threadLocal实例包装成一个WeakReferenece。**到这里我们可以用一个图（下图来自http://blog.xiaohansong.com/2016/08/06/ThreadLocal-memory-leak/）来理解下thread,threadLocal,threadLocalMap，Entry之间的关系：
+Entry是一个以ThreadLocal为key,Object为value的键值对，另外需要注意的是这里的**threadLocal是弱引用，因为Entry继承了WeakReference，在Entry的构造方法中，调用了super(k)方法就会将threadLocal实例包装成一个WeakReferenece。** 到这里我们可以用一个图（下图来自http://blog.xiaohansong.com/2016/08/06/ThreadLocal-memory-leak/
+）来理解下thread,threadLocal,threadLocalMap，Entry之间的关系：
 
 ![ThreadLocal各引用间的关系](http://upload-images.jianshu.io/upload_images/2615789-12aef2e6ff040cae.jpg?imageMogr2/auto-orient/strip%7CimageView2/2/w/610)
 
 
 
-注意上图中的实线表示强引用，虚线表示弱引用。如图所示，每个线程实例中可以通过threadLocals获取到threadLocalMap，而threadLocalMap实际上就是一个以threadLocal实例为key，任意对象为value的Entry数组。当我们为threadLocal变量赋值，实际上就是以当前threadLocal实例为key，值为value的Entry往这个threadLocalMap中存放。需要注意的是**Entry中的key是弱引用，当threadLocal外部强引用被置为null(`threadLocalInstance=null`),那么系统 GC 的时候，根据可达性分析，这个threadLocal实例就没有任何一条链路能够引用到它，这个ThreadLocal势必会被回收，这样一来，ThreadLocalMap中就会出现key为null的Entry，就没有办法访问这些key为null的Entry的value，如果当前线程再迟迟不结束的话，这些key为null的Entry的value就会一直存在一条强引用链：Thread Ref -> Thread -> ThreaLocalMap -> Entry -> value永远无法回收，造成内存泄漏。**当然，如果当前thread运行结束，threadLocal，threadLocalMap,Entry没有引用链可达，在垃圾回收的时候都会被系统进行回收。在实际开发中，会使用线程池去维护线程的创建和复用，比如固定大小的线程池，线程为了复用是不会主动结束的，所以，threadLocal的内存泄漏问题，是应该值得我们思考和注意的问题，关于这个问题可以看这篇文章----[详解threadLocal内存泄漏问题](http://www.jianshu.com/p/dde92ec37bd1)
+注意上图中的实线表示强引用，虚线表示弱引用。如图所示，每个线程实例中可以通过threadLocals获取到threadLocalMap，而threadLocalMap实际上就是一个以threadLocal实例为key，任意对象为value的Entry数组。当我们为threadLocal变量赋值，实际上就是以当前threadLocal实例为key，值为value的Entry往这个threadLocalMap中存放。需要注意的是**Entry中的key是弱引用，当threadLocal外部强引用被置为null(`threadLocalInstance=null`),那么系统 GC 的时候，根据可达性分析，这个threadLocal实例就没有任何一条链路能够引用到它，这个ThreadLocal势必会被回收，这样一来，ThreadLocalMap中就会出现key为null的Entry，就没有办法访问这些key为null的Entry的value，如果当前线程再迟迟不结束的话，这些key为null的Entry的value就会一直存在一条强引用链：Thread Ref -> Thread -> ThreaLocalMap -> Entry -> value永远无法回收，造成内存泄漏。** 当然，如果当前thread运行结束，threadLocal，threadLocalMap,Entry没有引用链可达，在垃圾回收的时候都会被系统进行回收。在实际开发中，会使用线程池去维护线程的创建和复用，比如固定大小的线程池，线程为了复用是不会主动结束的，所以，threadLocal的内存泄漏问题，是应该值得我们思考和注意的问题，关于这个问题可以看这篇文章----[详解threadLocal内存泄漏问题](http://www.jianshu.com/p/dde92ec37bd1)
 
 ## 3.2 set方法 ##
 
-与concurrentHashMap，hashMap等容器一样，threadLocalMap也是采用散列表进行实现的。在了解set方法前，我们先来回顾下关于散列表相关的知识（摘自[这篇的threadLocalMap的讲解部分](https://www.cnblogs.com/zhangjk1993/archive/2017/03/29/6641745.html)以及[这篇文章的hash](http://faculty.cs.niu.edu/~freedman/340/340notes/340hash.htm)）。
+与concurrentHashMap，hashMap等容器一样，threadLocalMap也是采用散列表进行实现的。在了解set方法前，我们先来回顾下关于散列表相关的知识（摘自[这篇的threadLocalMap的讲解部分](https://www.cnblogs.com/zhangjk1993/archive/2017/03/29/6641745.html)
+以及[这篇文章的hash](http://faculty.cs.niu.edu/~freedman/340/340notes/340hash.htm)
+）。
 
 
 
@@ -178,7 +181,8 @@ Entry是一个以ThreadLocal为key,Object为value的键值对，另外需要注�
 
 图片来自 http://alexyyek.github.io/2014/12/14/hashCollapse/
 
-关于两种方式的比较，可以参考 [这篇文章](http://www.nowamagic.net/academy/detail/3008060)。**ThreadLocalMap 中使用开放地址法来处理散列冲突**，而 HashMap 中使用的分离链表法。之所以采用不同的方式主要是因为：在 ThreadLocalMap 中的散列值分散的十分均匀，很少会出现冲突。并且 ThreadLocalMap 经常需要清除无用的对象，使用纯数组更加方便。
+关于两种方式的比较，可以参考 [这篇文章](http://www.nowamagic.net/academy/detail/3008060)
+。**ThreadLocalMap 中使用开放地址法来处理散列冲突**，而 HashMap 中使用的分离链表法。之所以采用不同的方式主要是因为：在 ThreadLocalMap 中的散列值分散的十分均匀，很少会出现冲突。并且 ThreadLocalMap 经常需要清除无用的对象，使用纯数组更加方便。
 
 在了解这些相关知识后我们再回过头来看一下set方法。set方法的源码为：
 ```java
@@ -235,7 +239,8 @@ private static int nextHashCode() {
 	return nextHashCode.getAndAdd(HASH_INCREMENT);
 }
 ```
-	从源码中我们可以清楚的看到threadLocal实例的hashCode是通过nextHashCode()方法实现的，该方法实际上总是用一个AtomicInteger加上0x61c88647来实现的。0x61c88647这个数是有特殊意义的，它能够保证hash表的每个散列桶能够均匀的分布，这是`Fibonacci Hashing`，关于更多介绍可以看[这篇文章的threadLocal散列值部分](https://www.cnblogs.com/zhangjk1993/archive/2017/03/29/6641745.html)。也正是能够均匀分布，所以threadLocal选择使用开放地址法来解决hash冲突的问题。
+从源码中我们可以清楚的看到threadLocal实例的hashCode是通过nextHashCode()方法实现的，该方法实际上总是用一个AtomicInteger加上0x61c88647来实现的。0x61c88647这个数是有特殊意义的，它能够保证hash表的每个散列桶能够均匀的分布，这是`Fibonacci Hashing`，关于更多介绍可以看[这篇文章的threadLocal散列值部分](https://www.cnblogs.com/zhangjk1993/archive/2017/03/29/6641745.html)
+。也正是能够均匀分布，所以threadLocal选择使用开放地址法来解决hash冲突的问题。
 
 2. 怎样确定新值插入到哈希表中的位置？
 	
@@ -361,7 +366,7 @@ private Entry getEntryAfterMiss(ThreadLocal<?> key, int i, Entry e) {
 	return null;
 }
 ```
-这个方法同样很好理解，通过nextIndex往后环形查找，如果找到和查询的key相同的entry的话就直接返回，如果在查找过程中遇到脏entry的话使用expungeStaleEntry方法进行处理。到目前为止**，为了解决潜在的内存泄漏的问题，在set，resize,getEntry这些地方都会对这些脏entry进行处理，可见为了尽可能解决这个问题几乎无时无刻都在做出努力。**
+这个方法同样很好理解，通过nextIndex往后环形查找，如果找到和查询的key相同的entry的话就直接返回，如果在查找过程中遇到脏entry的话使用expungeStaleEntry方法进行处理。到目前为止，**为了解决潜在的内存泄漏的问题，在set，resize,getEntry这些地方都会对这些脏entry进行处理，可见为了尽可能解决这个问题几乎无时无刻都在做出努力。**
 
 ## 3.4 remove ##
 

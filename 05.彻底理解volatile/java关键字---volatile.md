@@ -1,8 +1,10 @@
 # 1. volatile简介 #
 
-在上一篇文章中我们深入理解了java关键字[synchronized](https://juejin.im/post/5ae6dc04f265da0ba351d3ff)，我们知道在java中还有一大神器就是关键volatile，可以说是和synchronized各领风骚，其中奥妙，我们来共同探讨下。
+在上一篇文章中我们深入理解了java关键字[synchronized](https://juejin.im/post/5ae6dc04f265da0ba351d3ff)
+，我们知道在java中还有一大神器就是关键volatile，可以说是和synchronized各领风骚，其中奥妙，我们来共同探讨下。
 
-通过上一篇的文章我们了解到synchronized是阻塞式同步，在线程竞争激烈的情况下会升级为重量级锁。而volatile就可以说是java虚拟机提供的最轻量级的同步机制。但它同时不容易被正确理解，也至于在并发编程中很多程序员遇到线程安全的问题就会使用synchronized。[Java内存模型](https://juejin.im/post/5ae6d309518825673123fd0e)告诉我们，各个线程会将共享变量从主内存中拷贝到工作内存，然后执行引擎会基于工作内存中的数据进行操作处理。线程在工作内存进行操作后何时会写到主内存中？这个时机对普通变量是没有规定的，而针对volatile修饰的变量给java虚拟机特殊的约定，线程对volatile变量的修改会立刻被其他线程所感知，即不会出现数据脏读的现象，从而保证数据的“可见性”。
+通过上一篇的文章我们了解到synchronized是阻塞式同步，在线程竞争激烈的情况下会升级为重量级锁。而volatile就可以说是java虚拟机提供的最轻量级的同步机制。但它同时不容易被正确理解，也至于在并发编程中很多程序员遇到线程安全的问题就会使用synchronized。[Java内存模型](https://juejin.im/post/5ae6d309518825673123fd0e)
+告诉我们，各个线程会将共享变量从主内存中拷贝到工作内存，然后执行引擎会基于工作内存中的数据进行操作处理。线程在工作内存进行操作后何时会写到主内存中？这个时机对普通变量是没有规定的，而针对volatile修饰的变量给java虚拟机特殊的约定，线程对volatile变量的修改会立刻被其他线程所感知，即不会出现数据脏读的现象，从而保证数据的“可见性”。
 
 现在我们有了一个大概的印象就是：**被volatile修饰的变量能够保证每个线程能够获取该变量的最新值，从而避免出现数据脏读的现象。**
 
@@ -29,7 +31,9 @@ instance = new Instancce()  //instance是volatile变量
 
 经过上面的分析，我们已经知道了volatile变量可以通过**缓存一致性协议**保证每个线程都能获得最新值，即满足数据的“可见性”。我们继续延续上一篇分析问题的方式（我一直认为思考问题的方式是属于自己，也才是最重要的，也在不断培养这方面的能力），我一直将并发分析的切入点分为**两个核心，三大性质**。两大核心：JMM内存模型（主内存和工作内存）以及happens-before；三条性质：原子性，可见性，有序性（关于三大性质的总结在以后得文章会和大家共同探讨）。废话不多说，先来看两个核心之一：volatile的happens-before关系。
 
-在六条[happens-before规则](https://juejin.im/post/5ae6d309518825673123fd0e)中有一条是：**volatile变量规则：对一个volatile域的写，happens-before于任意后续对这个volatile域的读。**下面我们结合具体的代码，我们利用这条规则推导下：
+在六条[happens-before规则](https://juejin.im/post/5ae6d309518825673123fd0e)
+中有一条是：**volatile变量规则：对一个volatile域的写，happens-before于任意后续对这个volatile域的读。**
+下面我们结合具体的代码，我们利用这条规则推导下：
 ```java
 public class VolatileExample {
     private int a = 0;
@@ -74,6 +78,7 @@ public class VolatileExample {
 JMM内存屏障分为四类见下图，
 
 ![内存屏障分类表](http://upload-images.jianshu.io/upload_images/2615789-27cf04634cbdf284.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/680)
+
 
 
 java编译器会在生成指令系列时在适当的位置会插入内存屏障指令来禁止特定类型的处理器重排序。为了实现volatile的内存语义，JMM会限制特定类型的编译器和处理器重排序，JMM会针对编译器制定volatile重排序规则表：

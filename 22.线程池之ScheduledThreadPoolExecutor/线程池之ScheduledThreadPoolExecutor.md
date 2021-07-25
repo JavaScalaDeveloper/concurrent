@@ -7,7 +7,8 @@ ScheduledThreadPoolExecutor可以用来在给定延时后执行异步任务或�
 
 
 
-1. 从UML图可以看出，ScheduledThreadPoolExecutor继承了`ThreadPoolExecutor`，也就是说ScheduledThreadPoolExecutor拥有execute()和submit()提交异步任务的基础功能，关于ThreadPoolExecutor[可以看这篇文章](https://juejin.im/post/5aeec0106fb9a07ab379574f)。但是，ScheduledThreadPoolExecutor类实现了`ScheduledExecutorService`，该接口定义了ScheduledThreadPoolExecutor能够延时执行任务和周期执行任务的功能；
+1. 从UML图可以看出，ScheduledThreadPoolExecutor继承了`ThreadPoolExecutor`，也就是说ScheduledThreadPoolExecutor拥有execute()和submit()提交异步任务的基础功能，关于ThreadPoolExecutor[可以看这篇文章](https://juejin.im/post/5aeec0106fb9a07ab379574f)
+   。但是，ScheduledThreadPoolExecutor类实现了`ScheduledExecutorService`，该接口定义了ScheduledThreadPoolExecutor能够延时执行任务和周期执行任务的功能；
 2. ScheduledThreadPoolExecutor也两个重要的内部类：**DelayedWorkQueue**和**ScheduledFutureTask**。可以看出DelayedWorkQueue实现了BlockingQueue接口，也就是一个阻塞队列，ScheduledFutureTask则是继承了FutureTask类，也表示该类用于返回异步任务的结果。这两个关键类，下面会具体详细来看。
 
 
@@ -34,7 +35,8 @@ public ScheduledThreadPoolExecutor(int corePoolSize,ThreadFactory threadFactory,
 		  new DelayedWorkQueue(), threadFactory, handler);
 }
 ```
-可以看出由于ScheduledThreadPoolExecutor继承了ThreadPoolExecutor，它的构造方法实际上是调用了ThreadPoolExecutor，对ThreadPoolExecutor的介绍可以[可以看这篇文章](https://juejin.im/post/5aeec0106fb9a07ab379574f)，理解ThreadPoolExecutor构造方法的几个参数的意义后，理解这就很容易了。可以看出，ScheduledThreadPoolExecutor的核心线程池的线程个数为指定的corePoolSize，当核心线程池的线程个数达到corePoolSize后，就会将任务提交给有界阻塞队列DelayedWorkQueue，对DelayedWorkQueue在下面进行详细介绍，线程池允许最大的线程个数为Integer.MAX_VALUE，也就是说理论上这是一个大小无界的线程池。
+可以看出由于ScheduledThreadPoolExecutor继承了ThreadPoolExecutor，它的构造方法实际上是调用了ThreadPoolExecutor，对ThreadPoolExecutor的介绍可以[可以看这篇文章](https://juejin.im/post/5aeec0106fb9a07ab379574f)
+，理解ThreadPoolExecutor构造方法的几个参数的意义后，理解这就很容易了。可以看出，ScheduledThreadPoolExecutor的核心线程池的线程个数为指定的corePoolSize，当核心线程池的线程个数达到corePoolSize后，就会将任务提交给有界阻塞队列DelayedWorkQueue，对DelayedWorkQueue在下面进行详细介绍，线程池允许最大的线程个数为Integer.MAX_VALUE，也就是说理论上这是一个大小无界的线程池。
 
 ## 1.2 特有方法
 
